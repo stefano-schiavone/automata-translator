@@ -1,6 +1,6 @@
 grammar translator;
 
-// ============================ PARSER RULES ============================
+// Parser
 
 program
     : packageClause topLevelDecl* EOF
@@ -26,7 +26,7 @@ parameter
     : IDENTIFIER type_
     ;
 
-// Go return signatures: none, single type, or a parenthesised list of types.
+// Go return signatures: none, single type, or a parenthesised list of types
 returnSignature
     : type_                                  # singleReturn
     | '(' type_ (',' type_)* ')'             # multiReturn
@@ -102,7 +102,7 @@ argumentList
     : expression (',' expression)*
     ;
 
-// Expression grammar with precedence climbing (highest precedence last).
+// Expression grammar with precedence
 expression
     : '(' expression ')'                          # parenExpr
     | IDENTIFIER '(' argumentList? ')'            # callExpr
@@ -127,9 +127,9 @@ type_
     | 'bool'
     ;
 
-// ============================ LEXER RULES ============================
+// Lexer
 
-// NOTE: FLOAT_LIT must come before INT_LIT so '3.14' is not split.
+// FLOAT_LIT must come before INT_LIT so '2.26' is not split
 FLOAT_LIT  : [0-9]+ '.' [0-9]+ ;
 INT_LIT    : [0-9]+ ;
 STRING_LIT : '"' (~["\\\r\n] | '\\' .)* '"' ;

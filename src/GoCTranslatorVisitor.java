@@ -14,8 +14,7 @@ public class GoCTranslatorVisitor extends translatorBaseVisitor<String> {
    // Struct typedefs emitted before any function, one per multi-return function
    private final List<String> preamble = new ArrayList<>();
 
-   // ── helpers ──────────────────────────────────────────────────────────────
-
+   // Helpers
    private String indent() {
       return "    ".repeat(indentLevel);
    }
@@ -35,7 +34,7 @@ public class GoCTranslatorVisitor extends translatorBaseVisitor<String> {
       }
    }
 
-   /** Best-effort type inference from an expression node (no full type system). */
+   // Type inference from Go's weird type system
    private String inferType(translatorParser.ExpressionContext ctx) {
       if (ctx instanceof translatorParser.IntExprContext)
          return "int";
@@ -56,10 +55,8 @@ public class GoCTranslatorVisitor extends translatorBaseVisitor<String> {
       return "int";
    }
 
-   /**
-    * Scan all function declarations to build funcReturnTypes and generate struct
-    * preambles.
-    */
+   // Scan all function declarations to build funcReturnTypes and generate struct
+   // preambles.
    private void collectSignatures(translatorParser.ProgramContext ctx) {
       for (translatorParser.TopLevelDeclContext decl : ctx.topLevelDecl()) {
          translatorParser.FunctionDeclContext fd = decl.functionDecl();
@@ -88,8 +85,18 @@ public class GoCTranslatorVisitor extends translatorBaseVisitor<String> {
       }
    }
 
-   // Top level
+   private String stripTrailingSemi(String s) {
+      return s.endsWith(";") ? s.substring(0, s.length() - 1).stripTrailing() : s;
+   }
 
+   private String enclosingFunctionName(ParserRuleContext ctx) {
+      ParserRuleContext p = ctx.getParent();
+      while (p != null && !(p instanceof translatorParser.FunctionDeclContext))
+         p = p.getParent();
+      return p != null ? ((translatorParser.FunctionDeclContext) p).IDENTIFIER().getText() : "_unknown";
+   }
+
+   // Top section of code
    @Override
    public String visitProgram(translatorParser.ProgramContext ctx) {
       collectSignatures(ctx);
@@ -135,7 +142,7 @@ public class GoCTranslatorVisitor extends translatorBaseVisitor<String> {
       return cReturn + " " + name + "(" + params + ") " + body;
    }
 
-   /** Visit a block, optionally appending `return 0;` for main. */
+   // Visit a block, optionally appending "return 0;" for main.
    private String visitBlockForFunc(translatorParser.BlockContext ctx, boolean isMain) {
       StringBuilder sb = new StringBuilder("{\n");
       indentLevel++;
@@ -154,7 +161,6 @@ public class GoCTranslatorVisitor extends translatorBaseVisitor<String> {
    }
 
    // Parameters
-
    @Override
    public String visitParameterList(translatorParser.ParameterListContext ctx) {
       List<String> parts = new ArrayList<>();
@@ -171,8 +177,7 @@ public class GoCTranslatorVisitor extends translatorBaseVisitor<String> {
       return cType + " " + vName;
    }
 
-   // ── statements ────────────────────────────────────────────────────────────
-
+   // Statements
    @Override
    public String visitVarDeclStmt(translatorParser.VarDeclStmtContext ctx) {
       return indent() + visit(ctx.varDecl()) + "\n";
@@ -234,7 +239,7 @@ public class GoCTranslatorVisitor extends translatorBaseVisitor<String> {
          }
       }
 
-      // Single assignment
+      // For single assignment
       if (names.size() == 1) {
          String cType = inferType(exprs.get(0));
          symbolTable.put(names.get(0), cType);
@@ -264,10 +269,8 @@ public class GoCTranslatorVisitor extends translatorBaseVisitor<String> {
       return visitAssignLines(ctx);
    }
 
-   /**
-    * Translates Go assignment. Parallel swap (a, b = b, a) needs temporaries
-    * so both right-hand sides are evaluated before any writes.
-    */
+   // Translates Go assignment. Parallel swap (a, b = b, a) needs temporaries so
+   // both right-hand sides are evaluated before any writes.
    private String visitAssignLines(translatorParser.AssignmentContext ctx) {
       List<String> names = new ArrayList<>();
       for (var id : ctx.IDENTIFIER())
@@ -325,11 +328,9 @@ public class GoCTranslatorVisitor extends translatorBaseVisitor<String> {
       return visit(ctx.forClause()) + " " + visit(ctx.block());
    }
 
-   /**
-    * Three-part for: `for i := 0; i < n; i++` → `for (int i = 0; i < n; i++)`.
-    * The initialiser already includes a semicolon from the inner rule so we strip
-    * it.
-    */
+   // Three-part for: "for i := 0; i < n; i++" → "for (int i = 0; i < n; i++)". The
+   // initialiser already includes a semicolon from the inner rule so we can strip
+   // it
    @Override
    public String visitThreePartFor(translatorParser.ThreePartForContext ctx) {
       String init = ctx.forInit() != null ? stripTrailingSemi(visit(ctx.forInit())) : "";
@@ -338,7 +339,7 @@ public class GoCTranslatorVisitor extends translatorBaseVisitor<String> {
       return "for (" + init + "; " + cond + "; " + post + ")";
    }
 
-   /** Go condition-only `for` maps to C `while`. */
+   // Go condition-only "for" maps to C "while".
    @Override
    public String visitConditionFor(translatorParser.ConditionForContext ctx) {
       return "while (" + visit(ctx.expression()) + ")";
@@ -370,6 +371,7 @@ public class GoCTranslatorVisitor extends translatorBaseVisitor<String> {
 
    /**
     * Multi-return: `return a, b` → `return (funcname_result){a, b};`
+    *
     * The struct type name is found by walking up the parse tree to the enclosing
     * function.
     */
@@ -447,7 +449,7 @@ public class GoCTranslatorVisitor extends translatorBaseVisitor<String> {
       return indent() + visit(ctx.expression()) + ";\n";
    }
 
-   // ── expressions ──────────────────────────────────────────────────────────
+   // Expressions
 
    @Override
    public String visitParenExpr(translatorParser.ParenExprContext ctx) {
@@ -544,18 +546,5 @@ public class GoCTranslatorVisitor extends translatorBaseVisitor<String> {
       for (var t : ctx.type_())
          types.add(goToCType(t.getText()));
       return String.join(", ", types);
-   }
-
-   // ── utilities ─────────────────────────────────────────────────────────────
-
-   private String stripTrailingSemi(String s) {
-      return s.endsWith(";") ? s.substring(0, s.length() - 1).stripTrailing() : s;
-   }
-
-   private String enclosingFunctionName(ParserRuleContext ctx) {
-      ParserRuleContext p = ctx.getParent();
-      while (p != null && !(p instanceof translatorParser.FunctionDeclContext))
-         p = p.getParent();
-      return p != null ? ((translatorParser.FunctionDeclContext) p).IDENTIFIER().getText() : "_unknown";
    }
 }
