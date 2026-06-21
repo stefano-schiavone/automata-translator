@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>From Go to C</title>
+
+<!-- Fonts: Playfair Display (serif) + General Sans (sans). Both via CDN. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://api.fontshare.com/v2/css?f[]=general-sans@200,300,400,500,600,700&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --bg:#10100E;            /* warm near-black */
+  --fg:#FFFFE3;            /* warm cream */
+  --serif:"Playfair Display",serif;
+  --sans:"General Sans","Inter",system-ui,sans-serif;
+}
+/* opacity-tier helpers */
+.fg100{color:var(--fg)}
+.fg70{color:color-mix(in srgb,var(--fg) 70%,transparent)}
+.fg60{color:color-mix(in srgb,var(--fg) 60%,transparent)}
+.fg50{color:color-mix(in srgb,var(--fg) 50%,transparent)}
+.fg35{color:color-mix(in srgb,var(--fg) 35%,transparent)}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);
+     -webkit-font-smoothing:antialiased;overflow:hidden}
+
+/* ---- Deck / slide framing (16:9) ---- */
+.deck{position:relative;height:100vh;width:100vw}
+.slide{position:absolute;inset:0;display:none;padding:clamp(2.5rem,5vw,5rem);
+       flex-direction:column;justify-content:center;overflow:hidden}
+.slide.active{display:flex}
+.slide-inner{position:relative;z-index:1;width:100%;max-width:1100px;margin-inline:auto}
+.slide.enter .slide-inner{animation:rise .25s ease both}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+/* ---- Type ---- */
+.eyebrow{font:500 .75rem/1 var(--sans);text-transform:uppercase;letter-spacing:.16em;
+         color:color-mix(in srgb,var(--fg) 50%,transparent);margin-bottom:1.4rem}
+.slide-title{font:500 clamp(2.5rem,6vw,4.5rem)/1.05 var(--serif);letter-spacing:-.02em}
+h2.slide-title{font-size:clamp(2rem,4.6vw,3.2rem)}
+.lead{font:400 clamp(1.25rem,2.5vw,2rem)/1.4 var(--serif);
+      color:color-mix(in srgb,var(--fg) 70%,transparent)}
+.body{font:500 1.125rem/1.6 var(--sans);color:color-mix(in srgb,var(--fg) 65%,transparent)}
+.caption{font:400 .75rem/1.5 var(--sans);color:color-mix(in srgb,var(--fg) 35%,transparent)}
+.tag{display:inline-block;font:500 .625rem/1 var(--sans);text-transform:uppercase;
+     letter-spacing:.15em;color:color-mix(in srgb,var(--fg) 70%,transparent);
+     border:1px solid color-mix(in srgb,var(--fg) 15%,transparent);
+     border-radius:9999px;padding:.4rem .8rem}
+.divider{border:0;border-top:1px solid color-mix(in srgb,var(--fg) 12%,transparent);margin:1.5rem 0}
+.card{border:1px solid color-mix(in srgb,var(--fg) 12%,transparent);border-radius:2px;
+      padding:1.5rem 1.6rem}
+
+/* ---- Layout primitives ---- */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:clamp(2rem,5vw,4rem);align-items:center}
+.grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:1.25rem}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:1.25rem}
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem}
+.stack-sm > * + *{margin-top:.6rem}
+.stack > * + *{margin-top:1.1rem}
+.row{display:flex;align-items:center;gap:1rem}
+
+/* agenda */
+.agenda li{display:flex;gap:1.25rem;align-items:baseline;padding:.9rem 0;
+           border-top:1px solid color-mix(in srgb,var(--fg) 10%,transparent);list-style:none}
+.agenda li .n{font:500 1rem/1 var(--sans);color:color-mix(in srgb,var(--fg) 35%,transparent);min-width:2rem}
+.agenda li .t{font:400 clamp(1.25rem,2.4vw,1.9rem)/1.2 var(--serif)}
+
+/* stat grid */
+.stat .num{font:500 clamp(2.5rem,5vw,3.8rem)/1 var(--serif);letter-spacing:-.02em}
+.stat .lbl{font:500 .8rem/1.3 var(--sans);text-transform:uppercase;letter-spacing:.1em;
+           color:color-mix(in srgb,var(--fg) 50%,transparent);margin-top:.6rem}
+
+/* feature bento */
+.bento{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;gap:1.1rem}
+.bento .card{display:flex;flex-direction:column;justify-content:flex-end;min-height:9.5rem}
+.bento .span2{grid-column:span 2}
+.bento .ttl{font:500 1.25rem/1.2 var(--serif);margin-bottom:.4rem}
+
+/* comparison */
+.vs{display:grid;grid-template-columns:1fr auto 1fr;gap:1.5rem;align-items:stretch}
+.vs .col{border:1px solid color-mix(in srgb,var(--fg) 12%,transparent);border-radius:2px;padding:1.6rem}
+.vs .mid{display:flex;align-items:center;font:400 1.5rem/1 var(--serif);
+         color:color-mix(in srgb,var(--fg) 35%,transparent)}
+.vs ul{list-style:none}.vs li{padding:.5rem 0;color:color-mix(in srgb,var(--fg) 70%,transparent)}
+
+/* process / timeline */
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:1.25rem}
+.step .k{font:500 .75rem/1 var(--sans);letter-spacing:.15em;text-transform:uppercase;
+         color:color-mix(in srgb,var(--fg) 35%,transparent)}
+.step .ttl{font:500 1.15rem/1.2 var(--serif);margin:.6rem 0 .4rem}
+.timeline{list-style:none;border-left:1px solid color-mix(in srgb,var(--fg) 15%,transparent);
+          margin-left:.5rem}
+.timeline li{position:relative;padding:0 0 1.4rem 1.6rem}
+.timeline li::before{content:"";position:absolute;left:-4.5px;top:.45rem;width:8px;height:8px;
+                     border-radius:50%;background:var(--fg);opacity:.6}
+.timeline .when{font:500 .75rem/1 var(--sans);letter-spacing:.12em;text-transform:uppercase;
+                color:color-mix(in srgb,var(--fg) 40%,transparent)}
+.timeline .what{font:400 1.25rem/1.3 var(--serif);margin-top:.35rem}
+
+/* code */
+pre{background:color-mix(in srgb,var(--fg) 5%,transparent);
+    border:1px solid color-mix(in srgb,var(--fg) 10%,transparent);border-radius:2px;
+    padding:1.4rem 1.6rem;overflow:auto;
+    font:400 clamp(.85rem,1.5vw,1.05rem)/1.6 ui-monospace,"SF Mono",Menlo,monospace}
+code{font-family:ui-monospace,"SF Mono",Menlo,monospace}
+.code-2{display:grid;grid-template-columns:1fr auto 1fr;gap:1.1rem;align-items:center}
+.code-2 pre{margin:0;height:100%}
+.code-2 .arrow{font:400 1.6rem/1 var(--serif);color:color-mix(in srgb,var(--fg) 35%,transparent)}
+.code-cap{font:500 .7rem/1 var(--sans);text-transform:uppercase;letter-spacing:.15em;
+          color:color-mix(in srgb,var(--fg) 40%,transparent);margin-bottom:.5rem}
+.cmt{color:color-mix(in srgb,var(--fg) 38%,transparent)}
+.kw{color:color-mix(in srgb,var(--fg) 90%,transparent)}
+
+/* quote */
+.quote blockquote{font:400 clamp(1.8rem,4vw,3rem)/1.25 var(--serif)}
+.quote cite{display:block;margin-top:1.6rem;font:500 .85rem/1 var(--sans);font-style:normal;
+            text-transform:uppercase;letter-spacing:.12em;color:color-mix(in srgb,var(--fg) 45%,transparent)}
+
+/* ---- Ambient motion (one per slide, fg-only, subtle) ---- */
+.ambient{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.orb{position:absolute;width:46vmax;height:46vmax;border-radius:50%;
+     background:radial-gradient(circle,color-mix(in srgb,var(--fg) 7%,transparent),transparent 60%);
+     filter:blur(8px)}
+.orb.tl{top:-18vmax;left:-12vmax;animation:drift 24s ease-in-out infinite alternate}
+.orb.br{bottom:-20vmax;right:-14vmax;animation:drift 30s ease-in-out infinite alternate-reverse}
+@keyframes drift{to{transform:translate(6vmax,4vmax) scale(1.12)}}
+.conic{position:absolute;top:50%;left:50%;width:80vmax;height:80vmax;translate:-50% -50%;
+       border-radius:50%;opacity:.5;
+       background:conic-gradient(from 0deg,transparent,color-mix(in srgb,var(--fg) 6%,transparent),transparent 40%);
+       animation:spin 40s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.scanline{position:absolute;left:0;right:0;height:1px;top:0;
+          background:color-mix(in srgb,var(--fg) 14%,transparent);
+          animation:scan 14s ease-in-out infinite alternate}
+@keyframes scan{to{top:100%}}
+.pulse{position:absolute;bottom:8%;right:9%;width:10px;height:10px;border-radius:50%;
+       background:var(--fg);opacity:.5;animation:beat 6s ease-in-out infinite}
+@keyframes beat{0%,100%{transform:scale(1);opacity:.5}50%{transform:scale(2.2);opacity:.12}}
+.grain{position:absolute;inset:-50%;opacity:.04;
+       background-image:radial-gradient(var(--fg) 1px,transparent 1.2px);background-size:5px 5px;
+       animation:grainmove 8s steps(6) infinite}
+@keyframes grainmove{to{transform:translate(8px,8px)}}
+
+/* ---- Chrome ---- */
+.progress{position:fixed;top:0;left:0;height:2px;background:var(--fg);opacity:.6;width:0;
+          transition:width .25s ease;z-index:9}
+.counter{position:fixed;bottom:1.6rem;right:2rem;font:500 .75rem/1 var(--sans);
+         letter-spacing:.1em;color:color-mix(in srgb,var(--fg) 35%,transparent);
+         font-variant-numeric:tabular-nums;z-index:9}
+.hint{position:fixed;bottom:1.6rem;left:2rem;font:500 .7rem/1 var(--sans);
+      color:color-mix(in srgb,var(--fg) 22%,transparent);z-index:9}
+
+/* ---- Overview grid (press o) ---- */
+.deck.overview{position:static;display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;
+               padding:1.5rem;height:auto;min-height:100vh;overflow:auto}
+.deck.overview .slide{position:relative;inset:auto;display:flex;height:34vh;
+       border:1px solid color-mix(in srgb,var(--fg) 12%,transparent);border-radius:3px;
+       cursor:pointer;padding:1.2rem}
+.deck.overview .slide.active{outline:1px solid var(--fg)}
+.deck.overview .slide-title{font-size:1.4rem}
+.deck.overview .ambient{display:none}
+
+/* ---- Print → PDF (Cmd/Ctrl+P → Save as PDF) ---- */
+@media print{
+  @page{size:1280px 720px;margin:0}
+  html,body{overflow:visible;height:auto}
+  .progress,.counter,.hint{display:none}
+  .deck,.deck.overview{display:block;position:static;height:auto;padding:0}
+  .slide{display:flex!important;position:relative;inset:auto;width:1280px;height:720px;
+         page-break-after:always;outline:none!important;border:none!important}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .orb,.conic,.scanline,.pulse,.grain{animation:none!important}
+  .slide .slide-inner{animation:none!important}
+}
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+
+<div class="deck" id="deck">
+
+  <!-- 1 · COVER -->
+  <section class="slide" data-kind="cover">
+    <div class="ambient"><span class="orb tl"></span><span class="orb br"></span></div>
+    <div class="slide-inner">
+      <p class="eyebrow">Automata Project · Source-to-source translation</p>
+      <h1 class="slide-title">From Go to C</h1>
+      <p class="lead" style="margin-top:1.4rem;max-width:48ch">A small translator that compiles a subset of Go into equivalent C, built with ANTLR and the visitor pattern.</p>
+      <hr class="divider" style="max-width:64px;border-top-width:2px;margin-top:2rem">
+      <p class="caption">Group members · 21 June 2026</p>
+    </div>
+  </section>
+
+  <!-- 2 · AGENDA -->
+  <section class="slide" data-kind="agenda">
+    <div class="ambient"><span class="conic"></span></div>
+    <div class="slide-inner">
+      <p class="eyebrow">Agenda</p>
+      <ul class="agenda" style="margin-top:.5rem">
+        <li><span class="n">01</span><span class="t">The goal and our chosen scope</span></li>
+        <li><span class="n">02</span><span class="t">Go versus C — the gaps to bridge</span></li>
+        <li><span class="n">03</span><span class="t">The translation pipeline and grammar</span></li>
+        <li><span class="n">04</span><span class="t">Four interesting translations</span></li>
+        <li><span class="n">05</span><span class="t">Research, work division and lessons</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 3 · TWO-COLUMN — Goal -->
+  <section class="slide" data-kind="two-col">
+    <div class="ambient"><span class="orb br"></span></div>
+    <div class="slide-inner two-col">
+      <div>
+        <p class="eyebrow">The goal</p>
+        <h2 class="slide-title">Translate a subset of Go into C</h2>
+      </div>
+      <div class="stack">
+        <p class="body">Both Go and C are statically typed — but Go hides a lot of work the C programmer must still do by hand. That gap is exactly what makes the translation interesting.</p>
+        <p class="body">We support functions, variables, control flow, expressions and <code>fmt</code> printing. The translator reads Go, walks the parse tree with a visitor, and emits compilable C.</p>
+        <p class="caption">Scope kept deliberately small, then grown — start simple, stay manageable.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 · COMPARISON — Go vs C -->
+  <section class="slide" data-kind="comparison">
+    <div class="ambient"><span class="conic"></span></div>
+    <div class="slide-inner">
+      <p class="eyebrow">Why it is not a copy-paste</p>
+      <h2 class="slide-title" style="margin-bottom:1.8rem">Go versus C</h2>
+      <div class="vs">
+        <div class="col">
+          <span class="tag">Go — source</span>
+          <ul style="margin-top:1rem">
+            <li>Type inference with <code>:=</code></li>
+            <li>Many return values per function</li>
+            <li><code>a, b = b, a</code> parallel assignment</li>
+            <li>Typed printing via <code>fmt</code></li>
+          </ul>
+        </div>
+        <div class="mid">vs</div>
+        <div class="col">
+          <span class="tag">C — target</span>
+          <ul style="margin-top:1rem">
+            <li>Every declaration needs an explicit type</li>
+            <li>Functions return at most one value</li>
+            <li>Swaps need an explicit temporary</li>
+            <li><code>printf</code> needs the right <code>%</code> specifier</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 · PROCESS — pipeline -->
+  <section class="slide" data-kind="process">
+    <div class="ambient"><span class="scanline"></span></div>
+    <div class="slide-inner">
+      <p class="eyebrow">How the translator works</p>
+      <h2 class="slide-title" style="margin-bottom:2rem">The pipeline</h2>
+      <div class="steps">
+        <div class="step"><div class="k">Step 01</div><div class="ttl">Lex</div><p class="caption"><code>translatorLexer</code> turns Go source into a <code>CommonTokenStream</code> — identifiers, literals, keywords.</p></div>
+        <div class="step"><div class="k">Step 02</div><div class="ttl">Parse</div><p class="caption"><code>translatorParser.program()</code> builds the tree; we abort if ANTLR reports syntax errors.</p></div>
+        <div class="step"><div class="k">Step 03</div><div class="ttl">Pre-pass</div><p class="caption"><code>collectSignatures</code> scans every function first, recording return types and generating structs.</p></div>
+        <div class="step"><div class="k">Step 04</div><div class="ttl">Emit</div><p class="caption">The visitor walks the tree; each method returns C text, and the root prepends includes and structs.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 · CODE — grammar -->
+  <section class="slide" data-kind="code">
+    <div class="ambient"><span class="grain"></span></div>
+    <div class="slide-inner">
+      <p class="eyebrow">The grammar · ANTLR</p>
+      <h2 class="slide-title" style="margin-bottom:1.2rem">A subset, captured in rules</h2>
+<pre><code><span class="cmt">// Go return signatures: none, one type, or a parenthesised list</span>
+returnSignature
+    : type_                              <span class="cmt"># singleReturn</span>
+    | '(' type_ (',' type_)* ')'         <span class="cmt"># multiReturn</span>
+    ;
+
+shortVarDecl   <span class="cmt">// x := 5    |    a, b := f()</span>
+    : IDENTIFIER (',' IDENTIFIER)* ':=' expression (',' expression)*
+    ;
+
+assignment     <span class="cmt">// x = 5     |    a, b = b, a</span>
+    : IDENTIFIER (',' IDENTIFIER)* '=' expression (',' expression)*
+    ;
+
+printStmt      <span class="cmt">// fmt.Println(...) / Printf(...) / Print(...)</span>
+    : 'fmt' '.' ('Println' | 'Printf' | 'Print') '(' argumentList? ')'
+    ;</code></pre>
+      <p class="caption" style="margin-top:1rem">Labelled alternatives (<code>#singleReturn</code>, <code>#multiReturn</code>) generate one visit method each — the hooks for our translation logic.</p>
+    </div>
+  </section>
+
+  <!-- 7 · BENTO — four translations -->
+  <section class="slide" data-kind="bento">
+    <div class="ambient"><span class="orb tl"></span></div>
+    <div class="slide-inner">
+      <p class="eyebrow">The interesting part</p>
+      <h2 class="slide-title" style="margin-bottom:1.6rem">Four translations worth showing</h2>
+      <div class="bento">
+        <div class="card span2"><div class="ttl">Type inference</div><p class="body"><code>x := 5</code> carries no type. C needs one — so the visitor infers it from the expression and remembers it.</p></div>
+        <div class="card"><div class="ttl">Typed printing</div><p class="caption"><code>fmt.Println</code> becomes <code>printf</code> with the right <code>%</code> specifier per argument.</p></div>
+        <div class="card"><div class="ttl">Multiple returns</div><p class="caption">Go returns several values; C returns one — so we generate a <code>_result</code> struct.</p></div>
+        <div class="card span2"><div class="ttl">Parallel assignment</div><p class="body"><code>a, b = b, a</code> swaps in one line. C must evaluate the right-hand side into temporaries first.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8 · CODE — type inference -->
+  <section class="slide" data-kind="code">
+    <div class="ambient"><span class="grain"></span></div>
+    <div class="slide-inner">
+      <p class="eyebrow">Translation 1 · Type inference</p>
+      <h2 class="slide-title" style="margin-bottom:1.2rem">Recovering the type C demands</h2>
+      <div class="code-2">
+        <div>
+          <div class="code-cap">Go — source</div>
+<pre><code><span class="kw">x</span> := 5
+<span class="kw">y</span> := 3.14
+<span class="kw">s</span> := "hi"
+<span class="kw">ok</span> := true</code></pre>
+        </div>
+        <div class="arrow">&rarr;</div>
+        <div>
+          <div class="code-cap">C — emitted</div>
+<pre><code><span class="kw">int</span> x = 5;
+<span class="kw">double</span> y = 3.14;
+<span class="kw">char</span>* s = "hi";
+<span class="kw">int</span> ok = 1;</code></pre>
+        </div>
+      </div>
+      <p class="caption" style="margin-top:1rem">The visitor inspects the literal — <code>INT_LIT &rarr; int</code>, <code>FLOAT_LIT &rarr; double</code>, <code>STRING_LIT &rarr; char*</code> — and stores <code>name &rarr; type</code> in a symbol table so every later use is typed correctly.</p>
+    </div>
+  </section>
+
+  <!-- 9 · TWO-COLUMN — the visitor -->
+  <section class="slide" data-kind="two-col">
+    <div class="ambient"><span class="orb br"></span></div>
+    <div class="slide-inner two-col">
+      <div>
+        <p class="eyebrow">Why a visitor</p>
+        <h2 class="slide-title">Each node returns its C</h2>
+      </div>
+      <div class="stack">
+        <p class="body">The translator is one class — <code>extends translatorBaseVisitor&lt;String&gt;</code>. Every <code>visit</code> method returns the C text for its subtree, and parents stitch the pieces together.</p>
+        <p class="body">Two maps ride along the walk: <code>symbolTable</code> maps a variable to its C type, and <code>funcReturnTypes</code> maps a function to its return types. Returning strings — not printing as a listener would — lets a node ask its children for their type before emitting.</p>
+        <p class="caption">A pre-pass fills <code>funcReturnTypes</code> before emission, so every call already knows the arity of what it returns.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10 · CODE — printf -->
+  <section class="slide" data-kind="code">
+    <div class="ambient"><span class="grain"></span></div>
+    <div class="slide-inner">
+      <p class="eyebrow">Translation 2 · Typed printing</p>
+      <h2 class="slide-title" style="margin-bottom:1.2rem">fmt.Println becomes printf</h2>
+      <div class="code-2">
+        <div>
+          <div class="code-cap">Go — source</div>
+<pre><code><span class="kw">fmt</span>.Println("Sum:", z)
+<span class="kw">fmt</span>.Println("big")
+<span class="kw">fmt</span>.Println(i)</code></pre>
+        </div>
+        <div class="arrow">&rarr;</div>
+        <div>
+          <div class="code-cap">C — emitted</div>
+<pre><code>printf("Sum: %d\n", z);
+printf("big\n");
+printf("%d\n", i);</code></pre>
+        </div>
+      </div>
+      <p class="caption" style="margin-top:1rem"><code>Println</code> joins arguments with spaces and adds <code>\n</code>. String literals are baked straight into the format string; every other argument adds a specifier chosen by its inferred type — <code>%d</code> for int and bool, <code>%f</code> for double, <code>%s</code> for char*.</p>
+    </div>
+  </section>
+
+  <!-- 11 · QUOTE — complexity principle -->
+  <section class="slide quote" data-kind="quote">
+    <div class="ambient"><span class="conic"></span></div>
+    <div class="slide-inner">
+      <blockquote>Start small, see how complex the first version gets, then grow slowly into something bigger but still manageable.</blockquote>
+      <cite>— Our guiding principle for managing the translator</cite>
+    </div>
+  </section>
+
+  <!-- 12 · CODE — multiple returns -->
+  <section class="slide" data-kind="code">
+    <div class="ambient"><span class="grain"></span></div>
+    <div class="slide-inner">
+      <p class="eyebrow">Translations 3 and 4 · Multi-value semantics</p>
+      <h2 class="slide-title" style="margin-bottom:1.2rem">Many values out, through a struct</h2>
+      <div class="code-2">
+        <div>
+          <div class="code-cap">Go — source</div>
+<pre><code><span class="kw">func</span> swap(a int, b int) (int, int) {
+    <span class="kw">return</span> b, a
+}
+
+p, q := swap(x, y)</code></pre>
+        </div>
+        <div class="arrow">&rarr;</div>
+        <div>
+          <div class="code-cap">C — emitted</div>
+<pre><code><span class="kw">typedef struct</span> {
+    int _0;
+    int _1;
+} swap_result;
+
+swap_result swap(int a, int b) {
+    <span class="kw">return</span> (swap_result){b, a};
+}
+
+swap_result _tmp0 = swap(x, y);
+int p = _tmp0._0;
+int q = _tmp0._1;</code></pre>
+        </div>
+      </div>
+      <p class="caption" style="margin-top:.9rem">A multi-result function becomes a generated <code>&lt;name&gt;_result</code> struct, returned as a compound literal and unpacked through a temporary. The same temp-first trick keeps parallel <code>a, b = b, a</code> assignment safe.</p>
+    </div>
+  </section>
+
+  <!-- 13 · TWO-COLUMN — research and work division -->
+  <section class="slide" data-kind="two-col">
+    <div class="ambient"><span class="orb tl"></span></div>
+    <div class="slide-inner two-col">
+      <div>
+        <p class="eyebrow">Applied research and the team</p>
+        <h2 class="slide-title">Grounded in the specs</h2>
+      </div>
+      <div class="stack">
+        <p class="body"><b>Research.</b> We worked from the Go language specification for syntax and semantics, and the C standard for the target — pinning down exactly how <code>:=</code> inference and multi-value returns are defined.</p>
+        <p class="body"><b>Work division.</b> Each member owned both research and code: the grammar and lexer, the visitor and symbol table, and the translation cases — so everyone touched investigation and implementation.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 13 · CLOSING -->
+  <section class="slide" data-kind="closing">
+    <div class="ambient"><span class="orb tl"></span><span class="orb br"></span><span class="pulse"></span></div>
+    <div class="slide-inner">
+      <p class="eyebrow">Thank you</p>
+      <h1 class="slide-title">From Go to C</h1>
+      <hr class="divider" style="max-width:64px;border-top-width:2px;margin-top:2rem">
+      <p class="body" style="margin-top:1rem">Questions welcome — and a live demo of the translator if you would like to see it run.</p>
+    </div>
+  </section>
+
+</div>
+
+<div class="counter" id="counter"></div>
+<div class="hint">&larr; &rarr; / space · <b>o</b> overview · <b>f</b> fullscreen · <b>p</b> PDF</div>
+
+<script>
+(function(){
+  var deck=document.getElementById('deck');
+  var slides=[].slice.call(deck.querySelectorAll('.slide'));
+  var counter=document.getElementById('counter');
+  var progress=document.getElementById('progress');
+  var i=0,overview=false;
+
+  function clamp(n){return Math.max(0,Math.min(slides.length-1,n));}
+  function show(n){
+    i=clamp(n);
+    slides.forEach(function(s,k){
+      var on=k===i;s.classList.toggle('active',on);
+      if(on){s.classList.remove('enter');void s.offsetWidth;s.classList.add('enter');}
+    });
+    counter.textContent=(i+1)+' / '+slides.length;
+    progress.style.width=(i/(slides.length-1)*100)+'%';
+    if(!overview) location.hash=i+1;
+  }
+  function go(d){show(i+d);}
+  function toggleOverview(){
+    overview=!overview;deck.classList.toggle('overview',overview);
+    document.body.style.overflow=overview?'auto':'hidden';
+    if(!overview) show(i); else slides.forEach(function(s){s.classList.add('active');});
+  }
+  function fullscreen(){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();}
+
+  document.addEventListener('keydown',function(e){
+    switch(e.key){
+      case 'ArrowRight':case ' ':case 'PageDown':go(1);break;
+      case 'ArrowLeft':case 'PageUp':go(-1);break;
+      case 'Home':show(0);break;
+      case 'End':show(slides.length-1);break;
+      case 'o':case 'Escape':toggleOverview();break;
+      case 'f':fullscreen();break;
+      case 'p':window.print();break;
+    }
+  });
+  slides.forEach(function(s,k){s.addEventListener('click',function(){if(overview){toggleOverview();show(k);}});});
+
+  var start=parseInt((location.hash||'').replace('#',''),10);
+  show(isNaN(start)?0:start-1);
+})();
+</script>
+</body>
+</html>
