@@ -1,0 +1,15 @@
+# Compiled Java bytecode
+*.class
+
+# ANTLR generated runtime files
+*.interp
+*.tokens
+
+# ANTLR generated Java sources
+translatorLexer.java
+translatorParser.java
+translatorListener.java
+translatorBaseListener.java
+translatorVisitor.java
+translatorBaseVisitor.java
+GoSubsetLexer.java
